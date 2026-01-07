@@ -61,7 +61,8 @@ export async function POST(req: Request) {
 
     // Call N8N webhook asynchronously (don't wait for it)
     const webhookUrl = process.env.N8N_ENHANCE_WEBHOOK_URL;
-    if (webhookUrl) {
+    if (webhookUrl && webhookUrl !== "https://your-n8n-instance.com/webhook/your-webhook-id") {
+      console.log("Calling N8N webhook for task:", data.id);
       fetch(webhookUrl, {
         method: "POST",
         headers: {
@@ -75,9 +76,25 @@ export async function POST(req: Request) {
           title: data.title,
           user_email: data.user_email,
         }),
-      }).catch((error) => {
-        console.error("Failed to call N8N webhook:", error);
-      });
+      })
+        .then(async (response) => {
+          console.log(
+            `N8N webhook response status: ${response.status} for task ${data.id}`
+          );
+          if (!response.ok) {
+            const text = await response.text();
+            console.error(
+              `N8N webhook error: ${response.status} - ${text}`
+            );
+          } else {
+            console.log("N8N webhook called successfully");
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to call N8N webhook:", error);
+        });
+    } else {
+      console.log("N8N webhook URL not configured or is placeholder");
     }
     
     return NextResponse.json(data);

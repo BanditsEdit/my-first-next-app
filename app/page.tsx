@@ -10,6 +10,7 @@ type Task = {
   id: string;
   title: string;
   completed: boolean;
+  enhanced_title?: string;
 };
 
 export default function HomePage() {
@@ -18,15 +19,19 @@ export default function HomePage() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const [email, setEmail] = useState("test@example.com");
   const [name, setName] = useState("Test User");
   
   useEffect(() => {
+    setError(null);
     fetch(`/api/tasks?email=${email}`)
       .then((res) => {
         if (!res.ok) {
-          throw new Error(`Failed to fetch tasks: ${res.status}`);
+          return res.json().then((err) => {
+            throw new Error(err.error || `Failed to fetch tasks: ${res.status}`);
+          });
         }
         return res.json();
       })
@@ -34,6 +39,10 @@ export default function HomePage() {
         // Ensure data is an array
         if (Array.isArray(data)) {
           setTasks(data);
+          setError(null);
+        } else if (data.error) {
+          setError(data.error);
+          setTasks([]);
         } else {
           console.error("Expected array but got:", data);
           setTasks([]);
@@ -41,6 +50,7 @@ export default function HomePage() {
       })
       .catch((error) => {
         console.error("Error fetching tasks:", error);
+        setError(error.message || "Failed to load tasks. Please check your configuration.");
         setTasks([]);
       });
   }, [email]);
@@ -51,6 +61,7 @@ export default function HomePage() {
   const addTask = async () => {
     if (!newTaskTitle.trim()) return;
   
+    setError(null);
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -62,14 +73,17 @@ export default function HomePage() {
     });
   
     if (!res.ok) {
-      const error = await res.json();
-      console.error("Failed to add task:", error);
+      const errorData = await res.json();
+      const errorMessage = errorData.error || "Failed to add task";
+      setError(errorMessage);
+      console.error("Failed to add task:", errorData);
       return;
     }
   
     const newTask = await res.json();
     setTasks((prev) => [newTask, ...prev]);
     setNewTaskTitle("");
+    setError(null);
   };
   
 
@@ -144,12 +158,40 @@ export default function HomePage() {
     setEditingTaskId(null);
     setEditingTitle("");
   };
-  
-  
+
+  /**
+   * Display enhanced title if available, otherwise use regular title
+   */
+  const displayTitle = (task: Task) => {
+    return task.enhanced_title && task.enhanced_title.trim()
+      ? task.enhanced_title
+      : task.title;
+  };
 
   return (
     <main style={{ maxWidth: 600, margin: "40px auto", padding: 20 }}>
       <h1 style={{ fontSize: 28, marginBottom: 20 }}>My To-Do List</h1>
+
+      {/* Error Message */}
+      {error && (
+        <div
+          style={{
+            padding: 12,
+            marginBottom: 20,
+            backgroundColor: "#fee",
+            border: "1px solid #fcc",
+            borderRadius: 4,
+            color: "#c33",
+          }}
+        >
+          <strong>Error:</strong> {error}
+          {error.includes("SUPABASE_URL") && (
+            <div style={{ marginTop: 8, fontSize: 14 }}>
+              Please update your <code>.env.local</code> file with your actual Supabase credentials.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add Task */}
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
@@ -206,7 +248,7 @@ export default function HomePage() {
                     opacity: task.completed ? 0.6 : 1,
                   }}
                 >
-                  {task.title}
+                  {displayTitle(task)}
                 </span>
                 <button onClick={() => startEditing(task)}>Edit</button>
                 <button onClick={() => deleteTask(task.id)}>Delete</button>
