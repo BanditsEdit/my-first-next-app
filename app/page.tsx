@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
 
 /**
  * Task shape
- * This will later match the Supabase table
  */
 type Task = {
   id: string;
@@ -19,35 +19,96 @@ export default function HomePage() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
 
+  const [email, setEmail] = useState("test@example.com");
+  const [name, setName] = useState("Test User");
+  
+  useEffect(() => {
+    fetch(`/api/tasks?email=${email}`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Failed to fetch tasks: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Ensure data is an array
+        if (Array.isArray(data)) {
+          setTasks(data);
+        } else {
+          console.error("Expected array but got:", data);
+          setTasks([]);
+        }
+      })
+      .catch((error) => {
+        console.error("Error fetching tasks:", error);
+        setTasks([]);
+      });
+  }, [email]);
+  
   /**
    * Add a new task
    */
-  const addTask = () => {
+  const addTask = async () => {
     if (!newTaskTitle.trim()) return;
-
-    const newTask: Task = {
-      id: crypto.randomUUID(),
-      title: newTaskTitle,
-      completed: false,
-    };
-
-    setTasks((prev) => [...prev, newTask]);
+  
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: newTaskTitle,
+        user_email: email,
+        user_name: name,
+      }),
+    });
+  
+    if (!res.ok) {
+      const error = await res.json();
+      console.error("Failed to add task:", error);
+      return;
+    }
+  
+    const newTask = await res.json();
+    setTasks((prev) => [newTask, ...prev]);
     setNewTaskTitle("");
   };
+  
 
   /**
    * Toggle task completion
    */
-  const toggleComplete = (taskId: string) => {
+  const toggleComplete = async (taskId: string, completed: boolean) => {
+    const res = await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completed: !completed }),
+    });
+  
+    if (!res.ok) {
+      const error = await res.json();
+      console.error("Failed to toggle task:", error);
+      return;
+    }
+  
+    const updated = await res.json();
+  
     setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId
-          ? { ...task, completed: !task.completed }
-          : task
-      )
+      prev.map((t) => (t.id === taskId ? updated : t))
     );
   };
-
+   
+  const deleteTask = async (taskId: string) => {
+    const res = await fetch(`/api/tasks/${taskId}`, {
+      method: "DELETE",
+    });
+    
+    if (!res.ok) {
+      const error = await res.json();
+      console.error("Failed to delete task:", error);
+      return;
+    }
+    
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
   /**
    * Start editing a task
    */
@@ -59,18 +120,32 @@ export default function HomePage() {
   /**
    * Save edited task
    */
-  const saveEdit = (taskId: string) => {
+  const saveEdit = async (taskId: string) => {
     if (!editingTitle.trim()) return;
-
+  
+    const res = await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: editingTitle }),
+    });
+  
+    if (!res.ok) {
+      const error = await res.json();
+      console.error("Failed to update task:", error);
+      return;
+    }
+  
+    const updated = await res.json();
+  
     setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, title: editingTitle } : task
-      )
+      prev.map((t) => (t.id === taskId ? updated : t))
     );
-
+  
     setEditingTaskId(null);
     setEditingTitle("");
   };
+  
+  
 
   return (
     <main style={{ maxWidth: 600, margin: "40px auto", padding: 20 }}>
@@ -106,8 +181,8 @@ export default function HomePage() {
           >
             <input
               type="checkbox"
-              checked={task.completed}
-              onChange={() => toggleComplete(task.id)}
+              checked={task.completed || false}
+              onChange={() => toggleComplete(task.id, task.completed || false)}
             />
 
             {editingTaskId === task.id ? (
@@ -134,6 +209,7 @@ export default function HomePage() {
                   {task.title}
                 </span>
                 <button onClick={() => startEditing(task)}>Edit</button>
+                <button onClick={() => deleteTask(task.id)}>Delete</button>
               </>
             )}
           </div>
