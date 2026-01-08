@@ -13,6 +13,14 @@ type Task = {
   enhanced_title?: string;
 };
 
+/**
+ * Chat message shape
+ */
+type ChatMessage = {
+  role: "user" | "bot";
+  content: string;
+};
+
 export default function HomePage() {
   // Local state (temporary – Supabase replaces this in Phase 2)
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -23,6 +31,9 @@ export default function HomePage() {
 
   const [email, setEmail] = useState("test@example.com");
   const [name, setName] = useState("Test User");
+  
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
   
   useEffect(() => {
     setError(null);
@@ -168,6 +179,43 @@ export default function HomePage() {
       : task.title;
   };
 
+  /**
+   * Send a chat message and get bot response
+   */
+  const sendChatMessage = async () => {
+    if (!chatInput.trim()) return;
+
+    // show user message immediately
+    setChatMessages((prev) => [
+      ...prev,
+      { role: "user", content: chatInput },
+    ]);
+
+    const messageToSend = chatInput;
+    setChatInput("");
+
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        message: messageToSend,
+      }),
+    });
+
+    const data = await res.json();
+
+    setChatMessages((prev) => [
+      ...prev,
+      { role: "bot", content: data.reply },
+    ]);
+
+    // keep UI in sync with chat actions
+    fetch(`/api/tasks?email=${email}`)
+      .then((r) => r.json())
+      .then(setTasks);
+  };
+
   return (
     <main style={{ maxWidth: 600, margin: "40px auto", padding: 20 }}>
       <h1 style={{ fontSize: 28, marginBottom: 20 }}>My To-Do List</h1>
@@ -256,6 +304,50 @@ export default function HomePage() {
             )}
           </div>
         ))}
+      </div>
+
+      <hr style={{ margin: "40px 0" }} />
+
+      <h2>Chatbot</h2>
+
+      <div
+        style={{
+          border: "1px solid #ccc",
+          padding: 12,
+          borderRadius: 6,
+          marginBottom: 12,
+          maxHeight: 200,
+          overflowY: "auto",
+        }}
+      >
+        {chatMessages.length === 0 && (
+          <p style={{ opacity: 0.6 }}>
+            Hey there! <code> Talk to me about your to-do list </code>
+          </p>
+        )}
+
+        {chatMessages.map((msg, i) => (
+          <p key={i}>
+            <strong>{msg.role === "user" ? "You" : "Bot"}:</strong>{" "}
+            {msg.content}
+          </p>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type="text"
+          value={chatInput}
+          onChange={(e) => setChatInput(e.target.value)}
+          placeholder="#to-do list add buy groceries"
+          style={{ flex: 1, padding: 8 }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              sendChatMessage();
+            }
+          }}
+        />
+        <button onClick={sendChatMessage}>Send</button>
       </div>
 
       {/* Supabase placeholders */}
